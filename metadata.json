@@ -1,0 +1,5 @@
+{
+  "name": "Copy of Product Scene Generator",
+  "description": "Identify products in a room scene, upload detailed shots of those products, and generate new, consistent scene variations.",
+  "requestFramePermissions": []
+}
