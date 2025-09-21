@@ -3,7 +3,7 @@ import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { CAMERA_ANGLES } from "../constants";
 import type { SeedImage, IdentifiedProduct, DimensionFile } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: "AIzaSyDWKvyVx1vGQzppM0IMCnbzTWrkn4ZSSqo" });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const handleGeminiError = (error: any, context: string): Error => {
   console.error(`Error during ${context} with Gemini API:`, error);
