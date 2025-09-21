@@ -3,7 +3,12 @@ import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { CAMERA_ANGLES } from "../constants";
 import type { SeedImage, IdentifiedProduct, DimensionFile } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: "AIzaSyDWKvyVx1vGQzppM0IMCnbzTWrkn4ZSSqo" });
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+if (!GEMINI_API_KEY) {
+  throw new Error("VITE_GEMINI_API_KEY is not set. Please add it to your .env file.");
+}
+
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 const handleGeminiError = (error: any, context: string): Error => {
   console.error(`Error during ${context} with Gemini API:`, error);
