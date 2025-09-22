@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { CAMERA_ANGLES, PRODUCT_SPECIFIC_CAMERA_ANGLES } from "../constants";
 import type { SeedImage, IdentifiedProduct, DimensionFile, GeneratedImage } from "../types";
@@ -121,7 +120,6 @@ const getBaseGenerationParts = (
       - **IOR (Index of Refraction) & Specularity:** Define the reflective intensity (e.g., for porcelain, glass, metals).
       - **Texture/Anisotropy:** Describe surface patterns (e.g., "Satin finish with subtle anisotropic reflections and visible grain direction" for brushed metals).
     - This "PBR_Material_Description" is a core part of the product definition and must be prioritized in the final render.`;
-
 
       let materialFinishInstruction = '';
       const hasMaterial = p.product.material && p.product.material.trim() !== '' && p.product.material.trim().toLowerCase() !== 'not specified';
