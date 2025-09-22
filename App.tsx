@@ -4,6 +4,7 @@ import ImageUpload from './components/ImageUpload';
 import FileUpload from './components/FileUpload';
 import Button from './components/Button';
 import ImageGrid from './components/ImageGrid';
+import ProductDetailForm from './components/ProductDetailForm';
 import { identifyProductsInScene, generateSceneVariations, generateMasterScene, regenerateSingleSceneVariation } from './services/geminiService';
 import { CAMERA_ANGLES, ROOM_STYLES, MATERIALS, FINISHES } from './constants';
 import type { SeedImage, GeneratedImage, IdentifiedProduct, WorkflowStep, DimensionFile } from './types';
@@ -15,9 +16,11 @@ const App: React.FC = () => {
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [detailedShots, setDetailedShots] = useState<Record<string, SeedImage[]>>({});
   const [dimensionFiles, setDimensionFiles] = useState<Record<string, DimensionFile | null>>({});
+  const [productDimensions, setProductDimensions] = useState<Record<string, string>>({});
   const [masterSceneImage, setMasterSceneImage] = useState<string | null>(null);
   const [sceneStyle, setSceneStyle] = useState<string>(ROOM_STYLES[0]);
   const [customSceneStyle, setCustomSceneStyle] = useState<string>('');
+  const [useSpecificAngles, setUseSpecificAngles] = useState(false);
   
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -30,11 +33,14 @@ const App: React.FC = () => {
       .map(id => identifiedProducts.find(p => p.id === id))
       .filter((p): p is IdentifiedProduct => !!p)
       .map(product => ({
-        product,
+        product: {
+          ...product,
+          dimensions: productDimensions[product.id] || '',
+        },
         images: detailedShots[product.id] || [],
         dimensionFile: dimensionFiles[product.id] || null,
       }));
-  }, [selectedProductIds, identifiedProducts, detailedShots, dimensionFiles]);
+  }, [selectedProductIds, identifiedProducts, detailedShots, dimensionFiles, productDimensions]);
 
 
   useEffect(() => {
@@ -152,13 +158,17 @@ const App: React.FC = () => {
 
       const productsToInclude = getSelectedProductsWithData();
       const productNames = productsToInclude.map(p => p.product.name).join(', ') || 'the main product';
+      const firstProductType = productsToInclude.length > 0 ? productsToInclude[0].product.type : 'default';
 
-      const imageUrls = await generateSceneVariations(masterSeedImage, productNames);
-      const newImages = imageUrls.map((url, index) => ({
-        id: index,
-        src: url,
-        title: CAMERA_ANGLES[index]?.title || `Image ${index + 1}`,
-      }));
+      const imageData = await generateSceneVariations(masterSeedImage, productNames, useSpecificAngles, firstProductType);
+
+      const newImages = imageData
+        .map((data, index) => ({
+          id: index,
+          src: data?.src || null,
+          title: data?.title || `Image ${index + 1}`,
+        }))
+        .filter((img): img is GeneratedImage => img.src !== null);
       setGeneratedImages(newImages);
       setStep('results');
     } catch (err: any) {
@@ -188,12 +198,13 @@ const App: React.FC = () => {
 
       const productsToInclude = getSelectedProductsWithData();
       const productNames = productsToInclude.map(p => p.product.name).join(', ') || 'the main product';
+      const firstProductType = productsToInclude.length > 0 ? productsToInclude[0].product.type : 'default';
 
-      const newImageUrl = await regenerateSingleSceneVariation(masterSeedImage, imageId, productNames);
+      const newImageData = await regenerateSingleSceneVariation(masterSeedImage, imageId, productNames, useSpecificAngles, firstProductType);
       
       setGeneratedImages(prevImages => {
         const newImages = [...prevImages];
-        newImages[imageId] = { ...newImages[imageId], src: newImageUrl };
+        newImages[imageId] = { ...newImages[imageId], src: newImageData.src, title: newImageData.title };
         return newImages;
       });
 
@@ -216,6 +227,7 @@ const App: React.FC = () => {
         type: '',
         material: '',
         finish: '',
+        dimensions: '',
       };
       setIdentifiedProducts([initialProduct]);
       setSelectedProductIds(new Set([initialProductId]));
@@ -231,6 +243,7 @@ const App: React.FC = () => {
       type: '',
       material: '',
       finish: '',
+      dimensions: '',
     };
     setIdentifiedProducts(prev => [...prev, newProduct]);
     setSelectedProductIds(prev => new Set(prev).add(newId));
@@ -256,7 +269,7 @@ const App: React.FC = () => {
     });
   };
   
-  const handleDirectProductChange = (id: string, field: 'name' | 'type' | 'material' | 'finish', value: string) => {
+  const handleDirectProductChange = (id: string, field: 'name' | 'type' | 'material' | 'finish' | 'dimensions', value: string) => {
     setIdentifiedProducts(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
@@ -269,8 +282,10 @@ const App: React.FC = () => {
     setSelectedProductIds(new Set());
     setDetailedShots({});
     setDimensionFiles({});
+    setProductDimensions({});
     setMasterSceneImage(null);
     setGeneratedImages([]);
+    setUseSpecificAngles(false);
     setError(null);
     setIsLoading(false);
     setSceneStyle(ROOM_STYLES[0]);
@@ -361,45 +376,18 @@ const App: React.FC = () => {
                   For each product, provide a name, a descriptive type (including installation style), and upload its images.
               </p>
               <div className="space-y-6">
-                {selectedProducts.map((product, index) => {
-                   const isCustomMaterial = product.material !== undefined && product.material !== '' && !MATERIALS.includes(product.material);
-                   const isCustomFinish = product.finish !== undefined && product.finish !== '' && !FINISHES.includes(product.finish);
-                   return (
-                   <div key={product.id} className="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-4 relative">
-                      <div className="flex justify-between items-center">
-                         <h3 className="font-medium text-slate-200">Product {index + 1}</h3>
-                         {selectedProducts.length > 1 && (
-                            <button onClick={() => handleRemoveDirectProduct(product.id)} className="text-slate-500 hover:text-red-400 text-sm p-1">Remove</button>
-                         )}
-                      </div>
-                      <input type="text" placeholder="Product Name (e.g., Bathtub)" value={product.name} onChange={(e) => handleDirectProductChange(product.id, 'name', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500" />
-                      <input type="text" placeholder="Product Type & Installation (e.g., Freestanding Acrylic Tub)" value={product.type} onChange={(e) => handleDirectProductChange(product.id, 'type', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500" />
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label htmlFor={`material-${product.id}`} className="block text-sm font-medium text-slate-300 mb-1">Material (Optional)</label>
-                          <select id={`material-${product.id}`} value={isCustomMaterial ? 'Custom' : (product.material || '')} onChange={(e) => handleDirectProductChange(product.id, 'material', e.target.value === 'Custom' ? ' ' : e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500">
-                            <option value="">Not specified</option>
-                            {MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
-                            <option value="Custom">Custom...</option>
-                          </select>
-                          {isCustomMaterial && <input type="text" value={product.material} onChange={(e) => handleDirectProductChange(product.id, 'material', e.target.value)} placeholder="Enter custom material" className="mt-2 w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500"/>}
-                        </div>
-                        <div>
-                          <label htmlFor={`finish-${product.id}`} className="block text-sm font-medium text-slate-300 mb-1">Finish (Optional)</label>
-                          <select id={`finish-${product.id}`} value={isCustomFinish ? 'Custom' : (product.finish || '')} onChange={(e) => handleDirectProductChange(product.id, 'finish', e.target.value === 'Custom' ? ' ' : e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500">
-                            <option value="">Not specified</option>
-                            {FINISHES.map(f => <option key={f} value={f}>{f}</option>)}
-                            <option value="Custom">Custom...</option>
-                          </select>
-                          {isCustomFinish && <input type="text" value={product.finish} onChange={(e) => handleDirectProductChange(product.id, 'finish', e.target.value)} placeholder="Enter custom finish" className="mt-2 w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500"/>}
-                        </div>
-                      </div>
-
-                      <ImageUpload title="Upload Detailed Product Shots" onImageUpload={(images) => handleDetailUpload(product.id, images)} allowMultiple={true} />
-                      <FileUpload title="Upload Dimension/Spec Sheet (Optional)" onFileUpload={(file) => handleDimensionFileUpload(product.id, file)} />
-                   </div>
-                )})}
+                {selectedProducts.map((product, index) => (
+                  <ProductDetailForm
+                    key={product.id}
+                    product={product}
+                    onProductChange={handleDirectProductChange}
+                    onDetailUpload={handleDetailUpload}
+                    onDimensionFileUpload={handleDimensionFileUpload}
+                    showRemoveButton={selectedProducts.length > 1}
+                    onRemove={handleRemoveDirectProduct}
+                    index={index}
+                  />
+                ))}
               </div>
               <button onClick={handleAddDirectProduct} className="mt-4 text-sm text-sky-400 hover:text-sky-300">+ Add Another Product</button>
             </div>
@@ -429,43 +417,16 @@ const App: React.FC = () => {
                     For each product, you can optionally specify the material and finish. You can also provide images for a precise visual match. If you don't upload any images, the AI will generate a new design based on its description.
                 </p>
                 <div className="space-y-6">
-                 {selectedProducts.map(product => {
-                    const isCustomMaterial = product.material !== undefined && product.material !== '' && !MATERIALS.includes(product.material);
-                    const isCustomFinish = product.finish !== undefined && product.finish !== '' && !FINISHES.includes(product.finish);
-                    return (
-                    <div key={product.id} className="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-4">
-                      <h3 className="font-medium text-slate-200">{product.name} <span className="text-slate-400 text-sm">({product.type})</span></h3>
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label htmlFor={`material-${product.id}`} className="block text-sm font-medium text-slate-300 mb-1">Material (Optional)</label>
-                          <select id={`material-${product.id}`} value={isCustomMaterial ? 'Custom' : (product.material || '')} onChange={(e) => handleDirectProductChange(product.id, 'material', e.target.value === 'Custom' ? ' ' : e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500">
-                            <option value="">Not specified</option>
-                            {MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
-                            <option value="Custom">Custom...</option>
-                          </select>
-                          {isCustomMaterial && <input type="text" value={product.material} onChange={(e) => handleDirectProductChange(product.id, 'material', e.target.value)} placeholder="Enter custom material" className="mt-2 w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500"/>}
-                        </div>
-                        <div>
-                          <label htmlFor={`finish-${product.id}`} className="block text-sm font-medium text-slate-300 mb-1">Finish (Optional)</label>
-                          <select id={`finish-${product.id}`} value={isCustomFinish ? 'Custom' : (product.finish || '')} onChange={(e) => handleDirectProductChange(product.id, 'finish', e.target.value === 'Custom' ? ' ' : e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500">
-                            <option value="">Not specified</option>
-                            {FINISHES.map(f => <option key={f} value={f}>{f}</option>)}
-                            <option value="Custom">Custom...</option>
-                          </select>
-                          {isCustomFinish && <input type="text" value={product.finish} onChange={(e) => handleDirectProductChange(product.id, 'finish', e.target.value)} placeholder="Enter custom finish" className="mt-2 w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500"/>}
-                        </div>
-                      </div>
-                      <ImageUpload 
-                        title={`Detailed Shots for ${product.name} (Optional)`}
-                        onImageUpload={(images) => handleDetailUpload(product.id, images)}
-                        allowMultiple={true}
-                      />
-                      <FileUpload 
-                        title="Upload Dimension/Spec Sheet (Optional)"
-                        onFileUpload={(file) => handleDimensionFileUpload(product.id, file)}
-                      />
-                    </div>
-                  )})}
+                  {selectedProducts.map((product, index) => (
+                    <ProductDetailForm
+                      key={product.id}
+                      product={product}
+                      onProductChange={handleDirectProductChange}
+                      onDetailUpload={handleDetailUpload}
+                      onDimensionFileUpload={handleDimensionFileUpload}
+                      index={index}
+                    />
+                  ))}
                 </div>
             </div>
             <div>
@@ -507,6 +468,18 @@ const App: React.FC = () => {
               </p>
             </div>
             <div className="space-y-3">
+              <div className="flex items-center my-4">
+                <input
+                  id="specific-angles-checkbox"
+                  type="checkbox"
+                  checked={useSpecificAngles}
+                  onChange={(e) => setUseSpecificAngles(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-sky-600 focus:ring-sky-500"
+                />
+                <label htmlFor="specific-angles-checkbox" className="ml-3 block text-sm text-slate-300">
+                  Use Product-Specific Camera Angles (Beta)
+                </label>
+              </div>
               <Button onClick={handleGenerateFinalScenes} isLoading={isLoading}>
                 Approve & Generate Shots
               </Button>
