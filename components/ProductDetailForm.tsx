@@ -37,7 +37,6 @@ const ProductDetailForm: React.FC<ProductDetailFormProps> = ({
       <input type="text" placeholder="Product Name (e.g., Bathtub)" value={product.name} onChange={(e) => onProductChange(product.id, 'name', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500" />
       <input type="text" placeholder="Product Type & Installation (e.g., Freestanding Acrylic Tub)" value={product.type} onChange={(e) => onProductChange(product.id, 'type', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500" />
       <input type="text" placeholder="Product Dimensions (e.g., 67 L x 30 W x 28 H)" value={product.dimensions || ''} onChange={(e) => onProductChange(product.id, 'dimensions', e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded-md p-2 focus:ring-sky-500 focus:border-sky-500" />
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label htmlFor={`material-${product.id}`} className="block text-sm font-medium text-slate-300 mb-1">Material (Optional)</label>
