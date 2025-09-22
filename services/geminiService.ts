@@ -82,20 +82,20 @@ const getBaseGenerationParts = (
   roomScene: SeedImage | null,
   selectedProductsWithData: { product: IdentifiedProduct; images: SeedImage[]; dimensionFile: DimensionFile | null }[]
 ) => {
-  const roomScenePart = roomScene 
+  const roomScenePart = roomScene
     ? { inlineData: { data: roomScene.base64, mimeType: roomScene.mimeType } }
     : null;
 
-  const detailedProductParts = selectedProductsWithData.flatMap(p => 
+  const detailedProductParts = selectedProductsWithData.flatMap(p =>
     p.images.map(img => ({
       inlineData: { data: img.base64, mimeType: img.mimeType },
     }))
   );
-  
+
   const dimensionFileParts = selectedProductsWithData
     .filter(p => p.dimensionFile)
     .map(p => ({
-        inlineData: { data: p.dimensionFile!.base64, mimeType: p.dimensionFile!.mimeType }
+      inlineData: { data: p.dimensionFile!.base64, mimeType: p.dimensionFile!.mimeType }
     }));
 
 
@@ -103,43 +103,68 @@ const getBaseGenerationParts = (
     .map(p => {
       const hasDetailShots = p.images && p.images.length > 0;
       const hasDimensionFile = !!p.dimensionFile;
-      
+      const hasDimensions = p.product.dimensions && p.product.dimensions.trim() !== '';
+
       let dimensionInstruction = '';
       if (hasDimensionFile) {
         dimensionInstruction = `
   - **Dimensional & Technical Data (CRITICAL):** A specification sheet is attached for this product. It is a NON-NEGOTIABLE, absolute requirement that you strictly adhere to ALL dimensions, proportions, and technical details described in this document. The product MUST be rendered with perfect physical and dimensional accuracy. Any deviation from the provided specifications is a failure.`;
+      } else if (hasDimensions) {
+        dimensionInstruction = `
+  - **Dimensional Data (CRITICAL):** The user has provided the following dimensions: **${p.product.dimensions}**. It is a NON-NEGOTIABLE, absolute requirement that you strictly adhere to these dimensions and render the product with perfect proportional accuracy. Any deviation from the provided specifications is a failure.`;
       }
+
+      const pbrMaterialAnalysis = `
+  - **STEP 1B: PBR MATERIAL ANALYSIS (MANDATORY):** Before rendering, you must perform a Physically Based Rendering (PBR) analysis of the product's materials as seen in the "Detailed Product Shots". Define the material's properties in PBR terms. This is not optional.
+    - **PBR_Material_Description:** Your analysis must define:
+      - **Roughness/Gloss:** Describe the surface's light scattering (e.g., "Mirror finish, near-zero roughness" for polished chrome; "High roughness, diffused reflections" for a matte stone).
+      - **IOR (Index of Refraction) & Specularity:** Define the reflective intensity (e.g., for porcelain, glass, metals).
+      - **Texture/Anisotropy:** Describe surface patterns (e.g., "Satin finish with subtle anisotropic reflections and visible grain direction" for brushed metals).
+    - This "PBR_Material_Description" is a core part of the product definition and must be prioritized in the final render.`;
+
 
       let materialFinishInstruction = '';
       const hasMaterial = p.product.material && p.product.material.trim() !== '' && p.product.material.trim().toLowerCase() !== 'not specified';
       const hasFinish = p.product.finish && p.product.finish.trim() !== '' && p.product.finish.trim().toLowerCase() !== 'not specified';
 
       if (hasMaterial || hasFinish) {
-          materialFinishInstruction = `\n  - **Material & Finish (CRITICAL):** The product MUST be rendered with the following user-specified characteristics. This is a non-negotiable rule.`;
-          if (hasMaterial) {
-              materialFinishInstruction += `\n    - **Material:** ${p.product.material}`;
-          }
-          if (hasFinish) {
-              materialFinishInstruction += `\n    - **Finish:** ${p.product.finish}`;
-          }
+        materialFinishInstruction = `\n  - **User-Specified Material & Finish (CRITICAL):** The product MUST be rendered with the following user-specified characteristics. This is a non-negotiable rule.`;
+        if (hasMaterial) {
+          materialFinishInstruction += `\n    - **Material:** ${p.product.material}`;
+        }
+        if (hasFinish) {
+          materialFinishInstruction += `\n    - **Finish:** ${p.product.finish}`;
+        }
       }
 
       if (roomScene) { // Scene-based workflow
         if (hasDetailShots) {
           return `
 - **Product to Showcase (from images):** ${p.product.name}
-  - **Visual Source & Reproduction Mandate (NON-NEGOTIABLE CORE DIRECTIVE):** The provided "Detailed Product Shots" are the absolute, inviolable source of truth for this product's appearance. Your single most important task is to create an identical, photorealistic digital twin. You are not an artist here; you are a precision replicator. You must carefully analyze the object's shape and form from the provided images, including its contours, silhouette, and three-dimensional structure. You MUST replicate its exact shape, precise dimensions, specific color values, surface texture, material properties, and every single design detail with zero deviation. Any artistic license, interpretation, or modification—no matter how small—is a complete failure of the task.${dimensionInstruction}${materialFinishInstruction}
+  - **STEP 1 (Geometric Analysis):** The provided "[PRODUCT_IMAGE_SET]" (Detailed Product Shots) are the absolute, inviolable source of truth. Your primary task is to create a perfect digital twin.
+    - **Multi-View Analysis:** Analyze ALL images in the set to build a complete 3D understanding. Capture all details: bevels, chamfers, internal geometry (like basin slopes), knurling, and hardware.
+    - **Reproduction Mandate:** Replicate the exact shape, scale, and proportions with zero deviation.
+  ${dimensionInstruction}
+  ${pbrMaterialAnalysis}
+  ${materialFinishInstruction}
   - **Required Installation Style:** The product in the "Original Room Scene" was identified as a "${p.product.type}". You MUST install this new product in the exact same style. For example, if the original was a built-in tub, the new tub must be built-in. This is a critical rule.`;
         } else {
           return `
 - **Product to Generate (from description):** ${p.product.name}
-  - **Visual Source:** No detail shots were provided. You must **invent** a new, modern, and luxurious version of this product based on its description: "${p.product.type}".${dimensionInstruction}${materialFinishInstruction}
+  - **Visual Source:** No detail shots were provided. You must **invent** a new, modern, and luxurious version of this product based on its description: "${p.product.type}".
+  ${dimensionInstruction}
+  ${materialFinishInstruction}
   - **Required Installation Style:** The product in the "Original Room Scene" was identified as a "${p.product.type}". You MUST install your newly generated product in this exact same style. This is a critical rule.`;
         }
       } else { // Product-first workflow
         return `
 - **Product to Showcase (from images):** ${p.product.name}
-  - **Visual Source & Reproduction Mandate (NON-NEGOTIABLE CORE DIRECTIVE):** The provided "Detailed Product Shots" are the absolute, inviolable source of truth for this product's appearance. Your single most important task is to create an identical, photorealistic digital twin. You are not an artist here; you are a precision replicator. You must carefully analyze the object's shape and form from the provided images, including its contours, silhouette, and three-dimensional structure. You MUST replicate its exact shape, precise dimensions, specific color values, surface texture, material properties, and every single design detail with zero deviation. Any artistic license, interpretation, or modification—no matter how small—is a complete failure of the task.${dimensionInstruction}${materialFinishInstruction}
+  - **STEP 1 (Geometric Analysis):** The provided "[PRODUCT_IMAGE_SET]" (Detailed Product Shots) are the absolute, inviolable source of truth. Your primary task is to create a perfect digital twin.
+    - **Multi-View Analysis:** Analyze ALL images in the set to build a complete 3D understanding. Capture all details: bevels, chamfers, internal geometry (like basin slopes), knurling, and hardware.
+    - **Reproduction Mandate:** Replicate the exact shape, scale, and proportions with zero deviation.
+  ${dimensionInstruction}
+  ${pbrMaterialAnalysis}
+  ${materialFinishInstruction}
   - **Required Installation Style:** You must install this product based on its description: "${p.product.type}". For example, if it's a "Wall-mounted Faucet", it must be attached to a wall. Use a logical and aesthetically pleasing installation for the new room you are creating. This is a critical rule.`;
       }
     }).join('');
@@ -152,70 +177,80 @@ export const generateMasterScene = async (
   selectedProductsWithData: { product: IdentifiedProduct; images: SeedImage[], dimensionFile: DimensionFile | null }[],
   sceneStyle: string
 ): Promise<string> => {
-    const { roomScenePart, detailedProductParts, dimensionFileParts, productInstructions } = getBaseGenerationParts(roomScene, selectedProductsWithData);
-    const productNames = selectedProductsWithData.map(p => p.product.name).join(', ');
+  const { roomScenePart, detailedProductParts, dimensionFileParts, productInstructions } = getBaseGenerationParts(roomScene, selectedProductsWithData);
+  const productNames = selectedProductsWithData.map(p => p.product.name).join(', ');
 
-    const fullPrompt = roomScene
-      ? `**Objective:** Design a brand new, luxurious, and photorealistic bathroom scene in a specific style to showcase new products. A product's appearance is either defined by "Detailed Product Shots" if they are provided, or generated by you based on a description if they are not. The installation method for all products is dictated by the "Original Room Scene."
+  const fullPrompt = roomScene
+    ? `**Objective:** Design a brand new, luxurious, and photorealistic bathroom scene in a specific style to showcase new products.
+
+**STEP 2: SCENE CONCEPTUALIZATION**
 
 **Main Products to Showcase:** ${productNames}
 
 **Source Images Provided:**
-1.  **Original Room Scene:** Use this image ONLY to understand the installation context of the product(s) being replaced (e.g., "Built-in Tub", "Freestanding Sink"). **DO NOT COPY THE STYLE, LAYOUT, COLORS, OR MATERIALS OF THIS ROOM.** The final images should look nothing like this room.
-2.  **Detailed Product Shots (Optional):** If provided for a specific product, these are multiple, high-resolution images of that product. They are the absolute source of truth for that product's appearance.
-3.  **Dimension/Spec Sheet (Optional):** If provided, this document contains precise technical data about the product.
+1.  **Original Room Scene:** Use this image ONLY to understand the installation context of the product(s) being replaced (e.g., "Built-in Tub", "Freestanding Sink"). **DO NOT COPY THE STYLE, LAYOUT, COLORS, OR MATERIALS OF THIS ROOM.**
+2.  **[PRODUCT_IMAGE_SET] (Detailed Product Shots):** If provided, these are multiple images of a product, the absolute source of truth for its appearance.
+3.  **Dimension/Spec Sheet (Optional):** If provided, contains precise technical data.
 
 **Product & Installation Rules:**
 ${productInstructions}
 
-**CRITICAL RULES:**
+**CRITICAL SCENE GENERATION RULES:**
 
-1.  **Product Reproduction Accuracy (ABSOLUTE HIGHEST PRIORITY):** Your primary, non-negotiable directive is the flawless, 100% accurate reproduction of the user-provided products.
-    - **Visuals (The Unbreakable Rule):** When "Detailed Product Shots" are provided, your output must be an identical digital copy. Study the images meticulously, performing a deep analysis of the product's form. Pay close attention to its overall silhouette, the curvature of surfaces, the sharpness of edges, and the precise geometry of all components. The final rendered product's shape, scale, proportions, color, texture, material sheen, and every single design feature (curves, edges, handles, etc.) MUST be a perfect, 1:1 match to the source images. There is zero room for creative interpretation. Do not 'improve' or 'adapt' the design. Replicate it exactly.
-    - **Dimensions:** When a "Dimension/Spec Sheet" is provided, you MUST strictly and precisely adhere to ALL its specifications. This is non-negotiable.
-    - **Functional Details:** All functional elements like drain openings, faucet holes, and handles must be rendered with perfect physical accuracy as seen in the source materials.
-2.  **Invent a New Room in a Specific Style:** You must create a completely new, modern, and aesthetically pleasing bathroom environment from your imagination based on the requested style.
+1.  **Product Fidelity (HIGHEST PRIORITY):** Your primary directive is the flawless, 100% accurate reproduction of the user-provided products as defined in STEP 1 and 1B.
+2.  **Advanced Lighting Directives (MANDATORY):**
+    - **HDRI Environment:** You MUST simulate a high-quality, high dynamic range HDRI environment map for realistic, physically accurate illumination and reflections. The lighting should feel natural.
+    - **Global Illumination & Ambient Occlusion:** Ensure realistic light bounce and soft contact shadows to ground all objects.
+    - **Hero Lighting:** Employ subtle, professional lighting techniques to flatter the product. Use a soft rim light to separate the product's silhouette from the background. Ensure a large, soft reflection is visible along the product's main curves to emphasize its geometry.
+3.  **Contextual Integration and Scale Cues (MANDATORY):**
+    - **Scale Cues:** The scene must include objects or architectural features that provide a clear sense of scale, reinforcing the product's specified dimensions (e.g., "Standard 36-inch counter height," "12x24 inch floor tiles").
+    - **Installation Details:** Render realistic integration details. For example, show "subtle caulking where a tub meets the floor" or a "faucet mounted perfectly flush to a countertop deck."
+    - **Environmental FX (Optional):** If appropriate, add subtle effects like "realistic micro-droplets of water on a shower door" or "steam in the air."
+4.  **Invent a New Room in the Requested Style:**
     - **Requested Style:** ${sceneStyle}
-    - This room should be designed to make the new product look its absolute best, like a professional photograph from an architecture magazine. The final scene must be original and should not resemble the "Original Room Scene" in any way.
-3.  **Contextual Installation:** While the room is new, the product installation MUST follow the style derived from the "Original Room Scene" as specified above. The product must connect to the new room's architecture (walls, floor, plumbing) in a logical and physically believable way based on its type.
-4.  **Aspect Ratio:** The final output image MUST have a 16:9 landscape aspect ratio. This is a strict rendering requirement.
+    - This room should be designed to make the new product look its absolute best, like a professional photograph from an architecture magazine.
+5.  **Aspect Ratio:** The final output image MUST have a 16:9 landscape aspect ratio.
 
 **Your Task:**
-1.  Analyze any "Detailed Product Shots" and "Dimension/Spec Sheets" to create perfect, photorealistic digital twins of those new products.
-2.  For products without detail shots, invent a new, luxurious product based on its description.
-3.  Analyze the "Original Room Scene" ONLY to determine the required installation style for each product.
-4.  Design and render a single, final version of a completely new, luxurious bathroom scene in the **"${sceneStyle}"** style.
-5.  Install the new products into this new scene, following the installation rules.
-6.  Render a final image of this scene from the specific camera angle defined below.
+1.  Perform the product analysis as detailed in STEP 1 and 1B.
+2.  Design and render a single, final version of a completely new, luxurious bathroom scene in the **"${sceneStyle}"** style, following all lighting and integration rules.
+3.  Install the new products into this new scene, following the installation rules.
+4.  Render a final image of this scene from the specific camera angle defined below.
 
 **Camera Angle:** "Master Establishing Shot"
 A wide, eye-level establishing shot of the entire room, showing the product in its context. This should be a clean, clear, well-lit photograph that defines the overall style and layout of the new scene. The main product(s) being showcased must be in sharp focus.`
-      : `**Objective:** Design a brand new, luxurious, and photorealistic bathroom scene from scratch in a specific style to showcase one or more user-provided products.
+    : `**Objective:** Design a brand new, luxurious, and photorealistic bathroom scene from scratch in a specific style to showcase one or more user-provided products.
+
+**STEP 2: SCENE CONCEPTUALIZATION**
 
 **Main Products to Showcase:** ${productNames}
 
 **Source Images Provided:**
-1.  **Detailed Product Shots:** These are multiple, high-resolution images of the product(s) to be featured. They are the absolute source of truth for the product's appearance.
-2.  **Dimension/Spec Sheet (Optional):** If provided, this document contains precise technical data about the product.
+1.  **[PRODUCT_IMAGE_SET] (Detailed Product Shots):** These are multiple images of the product(s) to be featured, the absolute source of truth for appearance.
+2.  **Dimension/Spec Sheet (Optional):** If provided, contains precise technical data.
 
 **Product & Installation Rules:**
 ${productInstructions}
 
-**CRITICAL RULES:**
+**CRITICAL SCENE GENERATION RULES:**
 
-1.  **Product Reproduction Accuracy (ABSOLUTE HIGHEST PRIORITY):** Your primary, non-negotiable directive is the flawless, 100% accurate reproduction of the user-provided products.
-    - **Visuals (The Unbreakable Rule):** When "Detailed Product Shots" are provided, your output must be an identical digital copy. Study the images meticulously, performing a deep analysis of the product's form. Pay close attention to its overall silhouette, the curvature of surfaces, the sharpness of edges, and the precise geometry of all components. The final rendered product's shape, scale, proportions, color, texture, material sheen, and every single design feature (curves, edges, handles, etc.) MUST be a perfect, 1:1 match to the source images. There is zero room for creative interpretation. Do not 'improve' or 'adapt' the design. Replicate it exactly.
-    - **Dimensions:** When a "Dimension/Spec Sheet" is provided, you MUST strictly and precisely adhere to ALL its specifications. This is non-negotiable.
-    - **Functional Details:** All functional elements like drain openings, faucet holes, and handles must be rendered with perfect physical accuracy as seen in the source materials.
-2.  **Invent a New Room in a Specific Style:** You must create a completely new, modern, and aesthetically pleasing bathroom environment from your imagination based on the requested style.
+1.  **Product Fidelity (HIGHEST PRIORITY):** Your primary directive is the flawless, 100% accurate reproduction of the user-provided products as defined in STEP 1 and 1B.
+2.  **Advanced Lighting Directives (MANDATORY):**
+    - **HDRI Environment:** You MUST simulate a high-quality, high dynamic range HDRI environment map for realistic, physically accurate illumination and reflections. The lighting should feel natural.
+    - **Global Illumination & Ambient Occlusion:** Ensure realistic light bounce and soft contact shadows to ground all objects.
+    - **Hero Lighting:** Employ subtle, professional lighting techniques to flatter the product. Use a soft rim light to separate the product's silhouette from the background. Ensure a large, soft reflection is visible along the product's main curves to emphasize its geometry.
+3.  **Contextual Integration and Scale Cues (MANDATORY):**
+    - **Scale Cues:** The scene must include objects or architectural features that provide a clear sense of scale, reinforcing the product's specified dimensions (e.g., "Standard 36-inch counter height," "12x24 inch floor tiles").
+    - **Installation Details:** Render realistic integration details. For example, show "subtle caulking where a tub meets the floor" or a "faucet mounted perfectly flush to a countertop deck."
+    - **Environmental FX (Optional):** If appropriate, add subtle effects like "realistic micro-droplets of water on a shower door" or "steam in the air."
+4.  **Invent a New Room in the Requested Style:**
     - **Requested Style:** ${sceneStyle}
     - This room should be designed to make the new product(s) look their absolute best, like a professional photograph from an architecture magazine.
-3.  **Contextual Installation:** The product installation MUST follow the description provided for it (e.g., "Freestanding Tub," "Wall-mounted Faucet"). The product must connect to the new room's architecture (walls, floor, plumbing) in a logical and physically believable way.
-4.  **Aspect Ratio:** The final output image MUST have a 16:9 landscape aspect ratio. This is a strict rendering requirement.
+5.  **Aspect Ratio:** The final output image MUST have a 16:9 landscape aspect ratio.
 
 **Your Task:**
-1.  Analyze the "Detailed Product Shots" and "Dimension/Spec Sheets" to create perfect, photorealistic digital twins of the new products.
-2.  Design and render a single, final version of a completely new, luxurious bathroom scene in the **"${sceneStyle}"** style that complements the products.
+1.  Perform the product analysis as detailed in STEP 1 and 1B.
+2.  Design and render a single, final version of a completely new, luxurious bathroom scene in the **"${sceneStyle}"** style that complements the products, following all lighting and integration rules.
 3.  Install the new products into this new scene, following the installation rules.
 4.  Render a final image of this scene from the specific camera angle defined below.
 

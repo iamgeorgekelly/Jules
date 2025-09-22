@@ -22,6 +22,7 @@ export interface IdentifiedProduct {
   type: string;
   material?: string;
   finish?: string;
+  dimensions?: string;
 }
 
 // FIX: Added missing InteractiveModel interface used in ModelViewer.tsx.
