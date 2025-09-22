@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const [masterSceneImage, setMasterSceneImage] = useState<string | null>(null);
   const [sceneStyle, setSceneStyle] = useState<string>(ROOM_STYLES[0]);
   const [customSceneStyle, setCustomSceneStyle] = useState<string>('');
+  const [useSpecificAngles, setUseSpecificAngles] = useState(false);
   
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -157,13 +158,17 @@ const App: React.FC = () => {
 
       const productsToInclude = getSelectedProductsWithData();
       const productNames = productsToInclude.map(p => p.product.name).join(', ') || 'the main product';
+      const firstProductType = productsToInclude.length > 0 ? productsToInclude[0].product.type : 'default';
 
-      const imageUrls = await generateSceneVariations(masterSeedImage, productNames);
-      const newImages = imageUrls.map((url, index) => ({
-        id: index,
-        src: url,
-        title: CAMERA_ANGLES[index]?.title || `Image ${index + 1}`,
-      }));
+      const imageData = await generateSceneVariations(masterSeedImage, productNames, useSpecificAngles, firstProductType);
+
+      const newImages = imageData
+        .map((data, index) => ({
+          id: index,
+          src: data?.src || null,
+          title: data?.title || `Image ${index + 1}`,
+        }))
+        .filter((img): img is GeneratedImage => img.src !== null);
       setGeneratedImages(newImages);
       setStep('results');
     } catch (err: any) {
@@ -193,12 +198,13 @@ const App: React.FC = () => {
 
       const productsToInclude = getSelectedProductsWithData();
       const productNames = productsToInclude.map(p => p.product.name).join(', ') || 'the main product';
+      const firstProductType = productsToInclude.length > 0 ? productsToInclude[0].product.type : 'default';
 
-      const newImageUrl = await regenerateSingleSceneVariation(masterSeedImage, imageId, productNames);
+      const newImageData = await regenerateSingleSceneVariation(masterSeedImage, imageId, productNames, useSpecificAngles, firstProductType);
       
       setGeneratedImages(prevImages => {
         const newImages = [...prevImages];
-        newImages[imageId] = { ...newImages[imageId], src: newImageUrl };
+        newImages[imageId] = { ...newImages[imageId], src: newImageData.src, title: newImageData.title };
         return newImages;
       });
 
@@ -279,6 +285,7 @@ const App: React.FC = () => {
     setProductDimensions({});
     setMasterSceneImage(null);
     setGeneratedImages([]);
+    setUseSpecificAngles(false);
     setError(null);
     setIsLoading(false);
     setSceneStyle(ROOM_STYLES[0]);
@@ -461,6 +468,18 @@ const App: React.FC = () => {
               </p>
             </div>
             <div className="space-y-3">
+              <div className="flex items-center my-4">
+                <input
+                  id="specific-angles-checkbox"
+                  type="checkbox"
+                  checked={useSpecificAngles}
+                  onChange={(e) => setUseSpecificAngles(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-sky-600 focus:ring-sky-500"
+                />
+                <label htmlFor="specific-angles-checkbox" className="ml-3 block text-sm text-slate-300">
+                  Use Product-Specific Camera Angles (Beta)
+                </label>
+              </div>
               <Button onClick={handleGenerateFinalScenes} isLoading={isLoading}>
                 Approve & Generate Shots
               </Button>

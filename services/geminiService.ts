@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { CAMERA_ANGLES } from "../constants";
-import type { SeedImage, IdentifiedProduct, DimensionFile } from "../types";
+import { CAMERA_ANGLES, PRODUCT_SPECIFIC_CAMERA_ANGLES } from "../constants";
+import type { SeedImage, IdentifiedProduct, DimensionFile, GeneratedImage } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -288,7 +288,7 @@ const generateSingleVariationFromMaster = async (
   masterScenePart: { inlineData: { data: string; mimeType: string; } },
   angle: { title: string; prompt: string; },
   productNames: string
-): Promise<string> => {
+): Promise<{ src: string | null; title: string }> => {
   const fullPrompt = `**Objective:** Re-shoot an established scene from a specific new camera angle while maintaining perfect continuity.
 
 **Source Image Provided:**
@@ -322,7 +322,7 @@ ${angle.prompt}
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
-          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+          return { src: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`, title: angle.title };
         }
       }
     }
@@ -332,53 +332,109 @@ ${angle.prompt}
   }
 };
 
+const getAnglePlaybook = (productType: string, useSpecificAngles: boolean): { title: string; prompt: string }[] => {
+  if (!useSpecificAngles) {
+    return CAMERA_ANGLES;
+  }
+
+  const lowerCaseType = productType.toLowerCase();
+  let selectedKey: string | undefined;
+
+  // Simple keyword matching to find the right playbook
+  const mapping: Record<string, string[]> = {
+    "alcove_inset_tubs": ["alcove", "inset"],
+    "backwall_kit": ["backwall"],
+    "bathroom_sink": ["bathroom sink"],
+    "kitchen_sink_faucet": ["kitchen faucet"],
+    "mirror_cabinet": ["mirror", "cabinet"],
+    "shower_curtain_rod": ["curtain rod"],
+    "shower_door_tub_door": ["shower door", "tub door"],
+    "shower_enclosures": ["enclosure"],
+    "shower_faucet": ["shower faucet"],
+    "shower_kit": ["shower kit"],
+    "faucets": ["faucet"],
+    "toilets": ["toilet"],
+    "bathtub_kit": ["bathtub kit"],
+    "bathtubs": ["bathtub", "tub"],
+    "utility_sink": ["utility sink"],
+    "vanity": ["vanity"],
+    "vanity_knob_handles": ["knob", "handle"],
+    "vessel_sink": ["vessel"],
+    "exposed_shower_system": ["exposed shower"],
+    "base_shower_base": ["base"],
+  };
+
+  for (const key in mapping) {
+    if (mapping[key].some(keyword => lowerCaseType.includes(keyword))) {
+      selectedKey = key;
+      break;
+    }
+  }
+
+  if (selectedKey && PRODUCT_SPECIFIC_CAMERA_ANGLES[selectedKey as keyof typeof PRODUCT_SPECIFIC_CAMERA_ANGLES]) {
+    return PRODUCT_SPECIFIC_CAMERA_ANGLES[selectedKey as keyof typeof PRODUCT_SPECIFIC_CAMERA_ANGLES];
+  }
+
+  return CAMERA_ANGLES; // Fallback to default
+};
+
 
 export const generateSceneVariations = async (
   masterScene: SeedImage,
-  productNames: string
-): Promise<(string | null)[]> => {
+  productNames: string,
+  useSpecificAngles: boolean,
+  productType: string
+): Promise<({ src: string | null; title: string } | null)[]> => {
   const masterScenePart = {
     inlineData: { data: masterScene.base64, mimeType: masterScene.mimeType },
   };
 
-  const generationPromises = CAMERA_ANGLES.map(angle => 
+  const anglePlaybook = getAnglePlaybook(productType, useSpecificAngles);
+
+  const generationPromises = anglePlaybook.map(angle =>
     generateSingleVariationFromMaster(masterScenePart, angle, productNames)
   );
 
   try {
-      const results = await Promise.allSettled(generationPromises);
-      const imageUrls = results.map(result => {
-        if (result.status === 'fulfilled') {
-          return result.value;
-        }
-        console.error("A single scene variation failed to generate:", result.reason);
-        return null;
-      });
-      return imageUrls;
-  } catch (error) {
-      console.error("Error generating scene variations with Gemini API:", error);
-      if (error instanceof Error) {
-          throw new Error(`Failed to generate scene variations: ${error.message}`);
+    const results = await Promise.allSettled(generationPromises);
+    const imageData = results.map(result => {
+      if (result.status === 'fulfilled') {
+        return result.value;
       }
-      throw new Error("An unknown error occurred during scene variation generation.");
+      console.error("A single scene variation failed to generate:", result.reason);
+      return null;
+    });
+    return imageData;
+  } catch (error) {
+    console.error("Error generating scene variations with Gemini API:", error);
+    if (error instanceof Error) {
+      throw new Error(`Failed to generate scene variations: ${error.message}`);
+    }
+    throw new Error("An unknown error occurred during scene variation generation.");
   }
 };
 
 export const regenerateSingleSceneVariation = async (
   masterScene: SeedImage,
   angleIndex: number,
-  productNames: string
-): Promise<string> => {
+  productNames: string,
+  useSpecificAngles: boolean,
+  productType: string
+): Promise<{ src: string | null; title: string }> => {
   const masterScenePart = {
     inlineData: { data: masterScene.base64, mimeType: masterScene.mimeType },
   };
-  const angle = CAMERA_ANGLES[angleIndex];
+
+  const anglePlaybook = getAnglePlaybook(productType, useSpecificAngles);
+  const angle = anglePlaybook[angleIndex];
+
   if (!angle) {
     throw new Error(`Invalid angle index provided: ${angleIndex}.`);
   }
 
   try {
-    return await generateSingleVariationFromMaster(masterScenePart, angle, productNames);
+    const result = await generateSingleVariationFromMaster(masterScenePart, angle, productNames);
+    return result;
   } catch (error) {
     console.error(`Error regenerating scene for angle: ${angle.title}`, error);
     if (error instanceof Error) {
